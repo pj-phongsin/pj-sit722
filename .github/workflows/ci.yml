@@ -27,6 +27,25 @@ jobs:
     name: Build and Test Services
     runs-on: ubuntu-latest
 
+    # This 'services' block starts a PostgreSQL container for your tests
+    services:
+      postgres:
+        image: postgres:13 # Use a specific postgres version
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          # The test setup in your code tries to drop and create databases.
+          # We provide a default DB here, but the tests will manage their own.
+          POSTGRES_DB: testdb
+        ports:
+          - 5432:5432 # Map the port so the runner can connect on localhost:5432
+        # Health check to wait until Postgres is ready to accept connections
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
     steps:
       - name: "Checkout Code"
         uses: actions/checkout@v3
@@ -37,6 +56,14 @@ jobs:
           python-version: "3.11"
 
       - name: "Install Dependencies & Run Tests"
+        env:
+          # Override environment variables to match the service container
+          POSTGRES_HOST: localhost
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          # The specific DB names are hardcoded in your db.py files,
+          # so the tests will try to create 'customers', 'orders', and 'products' databases.
+          # The service container is configured to allow this.
         run: |
           pip install -r backend/customer_service/requirements-dev.txt
           pip install -r backend/order_service/requirements-dev.txt
