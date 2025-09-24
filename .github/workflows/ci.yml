@@ -36,7 +36,7 @@ jobs:
           POSTGRES_PASSWORD: postgres
           # The test setup in your code tries to drop and create databases.
           # We provide a default DB here, but the tests will manage their own.
-          POSTGRES_DB: testdb
+          POSTGRES_DB: postgres
         ports:
           - 5432:5432 # Map the port so the runner can connect on localhost:5432
         # Health check to wait until Postgres is ready to accept connections
