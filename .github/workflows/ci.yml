@@ -1,0 +1,169 @@
+# .github/workflows/ci.yml
+
+name: CI - Build, Test, and Deploy to Staging
+
+# Trigger this workflow on every push to the 'testing' branch
+on:
+  push:
+    branches:
+      - testing
+
+env:
+  # Replace with your Azure resource names
+  AZURE_RESOURCE_GROUP: "sit722week10"
+  AZURE_CONTAINER_REGISTRY: "pjsit722week10" # e.g., myuniqueregistry
+
+  # Define image names for each service
+  CUSTOMER_IMAGE_NAME: "customer-service"
+  ORDER_IMAGE_NAME: "order-service"
+  PRODUCT_IMAGE_NAME: "product-service"
+  FRONTEND_IMAGE_NAME: "frontend"
+
+jobs:
+  #########################################
+  # JOB 1: Run Backend Unit Tests         #
+  #########################################
+  build-and-test:
+    name: Build and Test Services
+    runs-on: ubuntu-latest
+
+    services:
+      postgres:
+        image: postgres:13
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: postgres # Use the default postgres DB to connect initially
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    steps:
+      - name: "Checkout Code"
+        uses: actions/checkout@v3
+
+      - name: "Set up Python"
+        uses: actions/setup-python@v4
+        with:
+          python-version: "3.11"
+
+      - name: "Install Dependencies & Run Tests"
+        env:
+          # These environment variables are crucial for the tests
+          POSTGRES_HOST: localhost
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          # THIS IS THE KEY LINE: Connect to the default 'postgres' database first.
+          POSTGRES_DB: postgres
+        run: |
+          pip install -r backend/customer_service/requirements-dev.txt
+          pip install -r backend/order_service/requirements-dev.txt
+          pip install -r backend/product_service/requirements-dev.txt
+
+          echo "Running Customer Service tests..."
+          pytest backend/customer_service/tests/
+
+          echo "Running Order Service tests..."
+          pytest backend/order_service/tests/
+
+          echo "Running Product Service tests..."
+          pytest backend/product_service/tests/
+
+  ###################################################
+  # JOB 2: Build & Push Docker Images to ACR        #
+  ###################################################
+  build-and-push-images:
+    name: Build & Push Docker Images
+    runs-on: ubuntu-latest
+    needs: build-and-test # This job runs only if 'build-and-test' succeeds
+
+    steps:
+      - name: "Checkout Code"
+        uses: actions/checkout@v3
+
+      - name: "Login to Azure Container Registry"
+        uses: azure/docker-login@v1
+        with:
+          login-server: ${{ env.AZURE_CONTAINER_REGISTRY }}.azurecr.io
+          username: ${{ secrets.ACR_USERNAME }}
+          password: ${{ secrets.ACR_PASSWORD }}
+
+      - name: "Build and Push Customer Service Image"
+        uses: docker/build-push-action@v4
+        with:
+          context: ./backend/customer_service
+          push: true
+          tags: ${{ env.AZURE_CONTAINER_REGISTRY }}.azurecr.io/${{ env.CUSTOMER_IMAGE_NAME }}:${{ github.sha }}
+
+      - name: "Build and Push Order Service Image"
+        uses: docker/build-push-action@v4
+        with:
+          context: ./backend/order_service
+          push: true
+          tags: ${{ env.AZURE_CONTAINER_REGISTRY }}.azurecr.io/${{ env.ORDER_IMAGE_NAME }}:${{ github.sha }}
+
+      - name: "Build and Push Product Service Image"
+        uses: docker/build-push-action@v4
+        with:
+          context: ./backend/product_service
+          push: true
+          tags: ${{ env.AZURE_CONTAINER_REGISTRY }}.azurecr.io/${{ env.PRODUCT_IMAGE_NAME }}:${{ github.sha }}
+
+      - name: "Build and Push Frontend Image"
+        uses: docker/build-push-action@v4
+        with:
+          context: ./frontend
+          push: true
+          tags: ${{ env.AZURE_CONTAINER_REGISTRY }}.azurecr.io/${{ env.FRONTEND_IMAGE_NAME }}:${{ github.sha }}
+
+  ###################################################
+  # JOB 3: Deploy Application to Staging            #
+  ###################################################
+  deploy-to-staging:
+    name: Deploy to Staging Environment
+    runs-on: ubuntu-latest
+    needs: build-and-push-images # This job runs only after images are successfully pushed
+
+    steps:
+      - name: "Login to Azure"
+        uses: azure/login@v1
+        with:
+          creds: ${{ secrets.AZURE_CREDENTIALS }}
+
+      - name: "Deploy Customer Service to Staging App Service"
+        uses: azure/webapps-deploy@v2
+        with:
+          app-name: "customer-stg" # Replace with your staging App Service name
+          images: "${{ env.AZURE_CONTAINER_REGISTRY }}.azurecr.io/${{ env.CUSTOMER_IMAGE_NAME }}:${{ github.sha }}"
+
+      - name: "Deploy Order Service to Staging App Service"
+        uses: azure/webapps-deploy@v2
+        with:
+          app-name: "order-stg" # Replace with your staging App Service name
+          images: "${{ env.AZURE_CONTAINER_REGISTRY }}.azurecr.io/${{ env.ORDER_IMAGE_NAME }}:${{ github.sha }}"
+
+      - name: "Deploy Product Service to Staging App Service"
+        uses: azure/webapps-deploy@v2
+        with:
+          app-name: "product-stg" # Replace with your staging App Service name
+          images: "${{ env.AZURE_CONTAINER_REGISTRY }}.azurecr.io/${{ env.PRODUCT_IMAGE_NAME }}:${{ github.sha }}"
+
+      - name: "Deploy Frontend to Staging App Service"
+        uses: azure/webapps-deploy@v2
+        with:
+          app-name: "frontend-stg" # Replace with your staging App Service name
+          images: "${{ env.AZURE_CONTAINER_REGISTRY }}.azurecr.io/${{ env.FRONTEND_IMAGE_NAME }}:${{ github.sha }}"
+
+    # Optional: As per the task, you can add a step here to run acceptance tests
+    # - name: Run Acceptance Tests
+    #   run: echo "Running acceptance tests on staging..."
+
+    # Optional: As per the task, you can add a step to destroy the staging environment
+    # This would typically involve an Azure CLI command
+    # - name: Destroy Staging Environment
+    #   run: |
+    #     az group delete --name YOUR_STAGING_RESOURCE_GROUP --yes --no-wait
