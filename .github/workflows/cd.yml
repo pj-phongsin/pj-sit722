@@ -1,0 +1,65 @@
+# .github/workflows/cd.yml
+
+name: CD - Deploy to Production
+
+# Trigger this workflow when a Pull Request to 'main' is closed and has been merged
+on:
+  pull_request:
+    types:
+      - closed
+    branches:
+      - main
+
+env:
+  # Replace with your Azure resource names
+  AZURE_RESOURCE_GROUP: "YOUR_PRODUCTION_RESOURCE_GROUP"
+  AZURE_CONTAINER_REGISTRY: "YOUR_ACR_NAME" # e.g., myuniqueregistry
+
+  # Define image names for each service
+  CUSTOMER_IMAGE_NAME: "customer-service"
+  ORDER_IMAGE_NAME: "order-service"
+  PRODUCT_IMAGE_NAME: "product-service"
+  FRONTEND_IMAGE_NAME: "frontend"
+
+jobs:
+  deploy-to-production:
+    name: Deploy to Production Environment
+    # Only run this job if the PR was merged
+    if: github.event.pull_request.merged == true
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: "Checkout Code"
+        uses: actions/checkout@v3
+        with:
+          # We need to fetch the merge commit SHA
+          ref: ${{ github.event.pull_request.merge_commit_sha }}
+
+      - name: "Login to Azure"
+        uses: azure/login@v1
+        with:
+          creds: ${{ secrets.AZURE_CREDENTIALS }}
+
+      - name: "Deploy Customer Service to Production App Service"
+        uses: azure/webapps-deploy@v2
+        with:
+          app-name: "YOUR_PRODUCTION_CUSTOMER_APP_NAME" # Replace with your production App Service name
+          images: "${{ env.AZURE_CONTAINER_REGISTRY }}.azurecr.io/${{ env.CUSTOMER_IMAGE_NAME }}:${{ github.sha }}"
+
+      - name: "Deploy Order Service to Production App Service"
+        uses: azure/webapps-deploy@v2
+        with:
+          app-name: "YOUR_PRODUCTION_ORDER_APP_NAME" # Replace with your production App Service name
+          images: "${{ env.AZURE_CONTAINER_REGISTRY }}.azurecr.io/${{ env.ORDER_IMAGE_NAME }}:${{ github.sha }}"
+
+      - name: "Deploy Product Service to Production App Service"
+        uses: azure/webapps-deploy@v2
+        with:
+          app-name: "YOUR_PRODUCTION_PRODUCT_APP_NAME" # Replace with your production App Service name
+          images: "${{ env.AZURE_CONTAINER_REGISTRY }}.azurecr.io/${{ env.PRODUCT_IMAGE_NAME }}:${{ github.sha }}"
+
+      - name: "Deploy Frontend to Production App Service"
+        uses: azure/webapps-deploy@v2
+        with:
+          app-name: "YOUR_PRODUCTION_FRONTEND_APP_NAME" # Replace with your production App Service name
+          images: "${{ env.AZURE_CONTAINER_REGISTRY }}.azurecr.io/${{ env.FRONTEND_IMAGE_NAME }}:${{ github.sha }}"
