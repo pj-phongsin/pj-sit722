@@ -10,8 +10,8 @@ on:
 
 env:
   # Replace with your Azure resource names
-  AZURE_RESOURCE_GROUP: "YOUR_RESOURCE_GROUP"
-  AZURE_CONTAINER_REGISTRY: "YOUR_ACR_NAME" # e.g., myuniqueregistry
+  AZURE_RESOURCE_GROUP: "sit722week10"
+  AZURE_CONTAINER_REGISTRY: "pjsit722week10" # e.g., myuniqueregistry
 
   # Define image names for each service
   CUSTOMER_IMAGE_NAME: "customer-service"
